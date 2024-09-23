@@ -86,9 +86,6 @@ class ParsingMachine:
                 print(res.status_code)
 
 
-
-
-
 if __name__ == "__main__":
     target_urls: set[str] = set()
 
@@ -99,5 +96,4 @@ if __name__ == "__main__":
     pm = ParsingMachine(qbuilder, pp)
 
     while target_urls:
-
-        pm.
+        pass
