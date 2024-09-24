@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Iterator
+from typing import Any
+from bs4 import BeautifulSoup
 from urllib.parse import urlencode
 import requests
 from fp.fp import FreeProxy
@@ -19,81 +20,82 @@ def gen_proxy():
     }
 
 
-class QueryBuilder(ABC):
-    domain: str
-    num: int
+def request_content(url: str) -> bytes:
+    res = requests.get(url=url, proxies=gen_proxy())
+    if res.status_code == 200:
+        return res.content
 
+    print("Content doesnt load", res.status_code)
+    raise Exception(res.status_code)
+
+
+class EngineParser(ABC):
     def __init__(self, start_queries: list[str]):
-        self.start_queries = start_queries
-        self.query_urls: set[str] = set()
-        self._start = None
+        self.seen: set[str] = set()
+        self.urls: set[str] = set()
+
+        def start_urls() -> None:
+            for query in start_queries:
+                self.urls.add(self.create_url(query))
+
+            self.seen = self.urls
+
+        start_urls()
 
     @abstractmethod
     def create_url(self, query: str) -> str:
         pass
 
-    @property
-    def start(self) -> int:
-        return self._start
-
-    @start.setter
-    def start(self, shift: int) -> None:
-        self._start = shift
-
-    def start_urls(self) -> Iterator[str]:
-        for query in self.start_queries:
-            yield self.create_url(query)
+    def search(self, url: str) -> Any:
+        pass
 
 
-class GoogleQueryBuilder(QueryBuilder):
+class GoogleParser(EngineParser):
     domain: str = "http://www.google.com/search?"
     num: int = 100
+    headers_get = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:49.0) Gecko/20100101 Firefox/49.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    }
+
+    item_xpath = "/html/body/div[3]/div/div[13]/div[2]/div[1]/div[2]/div/div/div[11]/div/div/div[1]/div/div/span/a/div/div/div/div[2]/cite"
+    pagination_xpath = ""
 
     def create_url(self, query: str) -> str:
-        q_params = {'q': query, 'num': self.num, 'start': self.start}
+        q_params = {'q': query, 'num': self.num}
         return self.domain + urlencode(q_params)
 
+    def search(self, url: str) -> Any:
+        s = requests.Session()
+        r = s.get(url, headers=self.headers_get, proxies=gen_proxy())
+        soup = BeautifulSoup(r.text, "html.parser")
+        for item in soup.find_all('cite'):
+            print(item)
+            # target_url = searchWrapper.find('a')["href"]
+            # pagination = searchWrapper.find('a').text.strip()
 
-class YandexQueryBuilder(QueryBuilder):
+
+class YandexParser(EngineParser):
     def create_url(self, query: str):
         pass
 
 
-class PageProcessor(ABC):
-    @abstractmethod
-    def parse(self, page: str):
-        pass
-
-
-class GooglePageProcessor(PageProcessor):
-    pass
-
-
-class YandexPageProcessor(PageProcessor):
-    pass
-
-
-class ParsingMachine:
-    def __init__(self, query_builder: QueryBuilder, page_processor: PageProcessor):
-        self.qbuilder = query_builder
-        self.page_processor = page_processor
-
-    def process_engine(self):
-        while self.qbuilder.query_urls:
-            curr_url: str = self.qbuilder.query_urls.pop()
-            res = requests.get(url=curr_url, proxies=gen_proxy())
-            if res.status_code != 200:
-                print(res.status_code)
-
-
 if __name__ == "__main__":
     target_urls: set[str] = set()
+    # Set engine parser
+    # build start engine defined queries
+    parser = GoogleParser(start_queries=start_queries)
 
-    qbuilder = GoogleQueryBuilder(
-        start_queries=start_queries
-    )
-    pp = GooglePageProcessor()
-    pm = ParsingMachine(qbuilder, pp)
+    # start requests through queries before empty set()
+    while parser.urls:
+        url = parser.urls.pop()
+        parser.search(url)
 
-    while target_urls:
-        pass
+    #     # process query result engine page
+    #     # collect target urls
+    #     # add new query urls prom paginatio
